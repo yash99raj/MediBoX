@@ -1,0 +1,8 @@
+numpy>=1.26.0
+pillow>=10.0.0
+flask>=3.0.0
+pypdf>=4.0.0
+
+# Optional: High-precision ClinicalBERT NLP models (uncomment if you have at least 8GB of RAM)
+# torch>=2.1.0
+# transformers>=4.35.0 

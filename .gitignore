@@ -1,0 +1,67 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+jspm_packages/
+
+# Next.js build output
+.next/
+out/
+
+# Python Virtual Environments
+.venv/
+venv/
+env/
+ENV/
+ml/venv/
+ml/.venv/
+ml/env/
+ml/ENV/
+
+# Python cache & build files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.ipynb_checkpoints/
+ml/src/models/__pycache__/
+
+# Environment variables (sensitive data)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+medi_box/.env
+medi_box/.env.local
+ml/.env
+
+# Production build outputs
+build/
+dist/
+
+# Debug and Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+*.log
+
+# OS Metadata
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE and editors
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
