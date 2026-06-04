@@ -8,11 +8,12 @@ import { NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-if (!process.env.GOOGLE_AI_API_KEY) {
-  console.error("GOOGLE_AI_API_KEY is not configured");
+const API_KEY = process.env.GOOGLE_AI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY || "";
+if (!API_KEY) {
+  console.error("Gemini API key is not configured. Please define GOOGLE_AI_API_KEY or NEXT_PUBLIC_GEMINI_API_KEY in your environment.");
 }
 
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY || "");
+const genAI = new GoogleGenerativeAI(API_KEY);
 
 // Enhanced safety settings for medical content
 const safetySettings = [
