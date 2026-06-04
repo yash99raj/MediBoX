@@ -247,6 +247,13 @@ def extract_text_from_pdf(file_bytes):
 
 # Load the image classifier model - in production, you would load a pre-trained model
 model = None
+if tensorflow_available and MedicalImageClassifier is not None:
+    try:
+        print("Initializing local TensorFlow MedicalImageClassifier...")
+        model = MedicalImageClassifier()
+        print("TensorFlow MedicalImageClassifier initialized successfully.")
+    except Exception as e:
+        print(f"Warning: Failed to initialize local TensorFlow image model: {e}. Running in mock mode.")
 
 # Define class labels for images
 CLASS_LABELS = [
