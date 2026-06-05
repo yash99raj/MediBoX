@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
+import ReactMarkdown from "react-markdown"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
@@ -367,18 +368,15 @@ export default function DiagnosisDetail() {
                   </p>
                 </div>
                 <div className="rounded-lg border overflow-hidden">
-                  <div className="relative aspect-video">
+                  <div className="relative">
                     {diagnosisData.imageSrc ? (
-                      <div className="absolute inset-0 flex items-center justify-center bg-muted">
-                        {/* In a real app, this would be the actual image from the database */}
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-12 w-12 text-muted-foreground">
-                          <rect width="18" height="18" x="3" y="3" rx="2" ry="2"></rect>
-                          <circle cx="8.5" cy="8.5" r="1.5"></circle>
-                          <path d="m21 15-5-5L5 21"></path>
-                        </svg>
-                      </div>
+                      <img
+                        src={diagnosisData.imageSrc}
+                        alt="Uploaded medical report"
+                        className="w-full h-auto object-contain max-h-[500px] bg-black"
+                      />
                     ) : (
-                      <div className="absolute inset-0 flex items-center justify-center bg-muted">
+                      <div className="aspect-video flex items-center justify-center bg-muted">
                         <p className="text-muted-foreground text-sm">No image available</p>
                       </div>
                     )}
@@ -386,23 +384,27 @@ export default function DiagnosisDetail() {
                   <div className="p-3 bg-muted/50">
                     <p className="text-sm font-medium">
                       {diagnosisData.imageSrc 
-                        ? "Medical image with AI analysis overlay" 
+                        ? "Uploaded medical report image" 
                         : "Text-based analysis only"}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {diagnosisData.imageSrc 
-                        ? "Red areas indicate regions of interest for the diagnosis"
+                        ? "AI Vision analysis was performed directly on this image"
                         : "Based on symptom description provided by patient"}
                     </p>
                   </div>
                 </div>
                 <div>
                   <h3 className="text-sm font-medium text-muted-foreground mb-2">AI Explanation</h3>
-                  <p className="text-sm">
-                    {diagnosisData.aiResponse ? 
-                      (diagnosisData.aiResponse.sections[0] || "No detailed explanation available").substring(0, 250) + "..." 
-                      : "The model identified patterns in the patient data that are consistent with the diagnosis. This preliminary assessment requires your medical validation."}
-                  </p>
+                  <div className="text-sm prose prose-sm dark:prose-invert max-w-none
+                    [&>h2]:text-base [&>h2]:font-semibold [&>h2]:mt-4 [&>h2]:mb-2 [&>h2]:text-primary
+                    [&>ul]:list-disc [&>ul]:pl-4 [&>ul]:space-y-1
+                    [&>ol]:list-decimal [&>ol]:pl-4
+                    [&>p]:mb-2 [&_strong]:font-semibold [&_li]:text-muted-foreground">
+                    <ReactMarkdown>
+                      {diagnosisData.aiResponse?.fullText || "The model identified patterns in the patient data that are consistent with the diagnosis. This preliminary assessment requires your medical validation."}
+                    </ReactMarkdown>
+                  </div>
                 </div>
               </div>
             </CardContent>

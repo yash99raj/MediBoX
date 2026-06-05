@@ -16,7 +16,7 @@ graph TD
     end
 
     subgraph ExternalServices [External Services]
-        Gemini[Google Gemini API: gemini-1.5-flash]
+        Gemini[Google Gemini API: gemini-2.5-flash]
     end
 
     subgraph Backend [Flask ML Backend]
@@ -48,7 +48,7 @@ graph TD
 
 The system implements a hybrid cloud-local AI intelligence layout:
 
-1. **Google Gemini API (`gemini-1.5-flash`)**
+1. **Google Gemini API (`gemini-2.5-flash`)**
    - **Role**: Primary Multimodal Engine
    - **Usage**: Analyzes raw symptoms, medical reports, and medical scan images. Performs generative analysis to produce structural diagnosis briefs, confidence bounds, and treatment recommendations.
 

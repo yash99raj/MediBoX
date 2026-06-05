@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
+import ReactMarkdown from "react-markdown"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -27,6 +28,26 @@ import {
   Loader2
 } from "lucide-react"
 import { useGeminiDiagnosis } from "@/lib/hooks/useGeminiDiagnosis"
+
+// Renders inline markdown (**bold**, *italic*) without wrapping in a <p> tag
+// Safe for use inside <li> elements where block-level wrappers break layout
+function InlineMd({ text }: { text: string }) {
+  const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g)
+  return (
+    <span>
+      {parts.map((part, i) => {
+        if (part.startsWith('**') && part.endsWith('**')) {
+          return <strong key={i} className="font-semibold text-foreground">{part.slice(2, -2)}</strong>
+        }
+        if (part.startsWith('*') && part.endsWith('*')) {
+          return <em key={i}>{part.slice(1, -1)}</em>
+        }
+        return <span key={i}>{part}</span>
+      })}
+    </span>
+  )
+}
+
 
 // Type definition for diagnosis data
 interface DiagnosisData {
@@ -305,7 +326,7 @@ export default function PatientDiagnosisDetail() {
                         <h4 className="font-medium mb-2">Treatment Recommendations</h4>
                         <ul className="text-sm space-y-1 list-disc list-inside">
                           {diagnosisData.treatmentRecommendations.map((item, i) => (
-                            <li key={i}>{item}</li>
+                            <li key={i}><InlineMd text={item} /></li>
                           ))}
                         </ul>
                       </div>
@@ -319,27 +340,49 @@ export default function PatientDiagnosisDetail() {
                   </CardHeader>
                   <CardContent>
                     <div className="border rounded-md overflow-hidden">
-                      <div className="relative aspect-video">
-                        <div className="absolute inset-0 flex items-center justify-center bg-muted">
-                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-12 w-12 text-muted-foreground">
-                            <rect width="18" height="18" x="3" y="3" rx="2" ry="2"></rect>
-                            <circle cx="8.5" cy="8.5" r="1.5"></circle>
-                            <path d="m21 15-5-5L5 21"></path>
-                          </svg>
-                        </div>
+                      <div className="relative">
+                        {diagnosisData.imageSrc ? (
+                          <img
+                            src={diagnosisData.imageSrc}
+                            alt="Uploaded medical report"
+                            className="w-full h-auto object-contain max-h-[500px] bg-black"
+                          />
+                        ) : (
+                          <div className="aspect-video flex items-center justify-center bg-muted">
+                            <div className="text-center text-muted-foreground">
+                              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-12 w-12 mx-auto mb-2">
+                                <rect width="18" height="18" x="3" y="3" rx="2" ry="2"></rect>
+                                <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                                <path d="m21 15-5-5L5 21"></path>
+                              </svg>
+                              <p className="text-sm">No image available</p>
+                            </div>
+                          </div>
+                        )}
                       </div>
                       <div className="p-3 bg-muted/50">
                         <div className="flex items-center justify-between">
                           <div>
-                            <p className="text-sm font-medium">Chest X-ray</p>
+                            <p className="text-sm font-medium">{diagnosisData.type}</p>
                             <p className="text-xs text-muted-foreground">
-                              Uploaded on May 10, 2023
+                              Uploaded on {diagnosisData.diagnosisDate}
                             </p>
                           </div>
-                          <Button variant="outline" size="sm">
-                            <Download size={14} className="mr-2" />
-                            Download
-                          </Button>
+                          {diagnosisData.imageSrc ? (
+                            <a
+                              href={diagnosisData.imageSrc}
+                              download={`report-${diagnosisData.id}.jpg`}
+                              className="inline-flex items-center gap-1 text-xs border rounded px-2 py-1 hover:bg-muted transition-colors"
+                            >
+                              <Download size={12} />
+                              Download
+                            </a>
+                          ) : (
+                            <Button variant="outline" size="sm" disabled>
+                              <Download size={14} className="mr-2" />
+                              Download
+                            </Button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -403,52 +446,32 @@ export default function PatientDiagnosisDetail() {
                 <CardContent className="space-y-4">
                   <div>
                     <h3 className="font-medium">Primary Diagnosis</h3>
-                    <p className="text-sm mt-1">
-                      The AI model has identified opacity in the lower right lung that is consistent with pneumonia.
-                      This finding has a confidence score of {diagnosisData.confidence}%, indicating high reliability of the diagnosis.
-                    </p>
+                    <div className="text-sm mt-2 prose prose-sm dark:prose-invert max-w-none
+                      [&>h2]:text-base [&>h2]:font-semibold [&>h2]:mt-4 [&>h2]:mb-2 [&>h2]:text-primary
+                      [&>h3]:text-sm [&>h3]:font-semibold [&>h3]:mt-3 [&>h3]:mb-1
+                      [&>ul]:list-disc [&>ul]:pl-5 [&>ul]:space-y-1
+                      [&>ol]:list-decimal [&>ol]:pl-5 [&>ol]:space-y-1
+                      [&>p]:mb-2 [&>p]:leading-relaxed
+                      [&_strong]:font-semibold [&_strong]:text-foreground
+                      [&_li]:text-muted-foreground">
+                      <ReactMarkdown>
+                        {diagnosisData.aiResponse?.fullText || `The AI model has analyzed the uploaded report and identified findings consistent with ${diagnosisData.aiDiagnosis.toLowerCase()}.`}
+                      </ReactMarkdown>
+                      <p className="mt-3 text-muted-foreground border-t pt-2">
+                        This finding has a confidence score of <strong>{diagnosisData.confidence}%</strong>, indicating the reliability of the diagnosis.
+                      </p>
+                    </div>
                   </div>
 
                   <div>
                     <h3 className="font-medium">Analysis Method</h3>
                     <p className="text-sm mt-1">
-                      The diagnosis was reached through a combination of image analysis of your chest X-ray and 
-                      correlation with your reported symptoms of persistent cough, fever, chest pain, and difficulty breathing.
+                      The diagnosis was reached through a combination of image analysis of your {diagnosisData.type.toLowerCase()} and 
+                      correlation with your reported symptoms: {diagnosisData.symptoms || 'None reported'}.
                     </p>
                   </div>
 
-                  <div className="border-t pt-4 mt-4">
-                    <h3 className="font-medium">Differential Diagnosis Considerations</h3>
-                    <ul className="mt-2 space-y-2">
-                      <li className="flex items-start gap-2">
-                        <div className="h-5 w-5 bg-amber-100 dark:bg-amber-800/20 rounded-full flex items-center justify-center text-xs font-medium text-amber-800 dark:text-amber-400 mt-0.5">
-                          23%
-                        </div>
-                        <div>
-                          <div className="font-medium">Bronchitis</div>
-                          <p className="text-sm text-muted-foreground">Less likely due to the focal nature of the opacity and fever.</p>
-                        </div>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <div className="h-5 w-5 bg-amber-100 dark:bg-amber-800/20 rounded-full flex items-center justify-center text-xs font-medium text-amber-800 dark:text-amber-400 mt-0.5">
-                          18%
-                        </div>
-                        <div>
-                          <div className="font-medium">Pulmonary Edema</div>
-                          <p className="text-sm text-muted-foreground">Less likely due to the pattern of infiltrates and absence of cardiac history.</p>
-                        </div>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <div className="h-5 w-5 bg-amber-100 dark:bg-amber-800/20 rounded-full flex items-center justify-center text-xs font-medium text-amber-800 dark:text-amber-400 mt-0.5">
-                          12%
-                        </div>
-                        <div>
-                          <div className="font-medium">Lung Cancer</div>
-                          <p className="text-sm text-muted-foreground">Low probability given the acute onset and pattern of symptoms.</p>
-                        </div>
-                      </li>
-                    </ul>
-                  </div>
+
                 </CardContent>
               </Card>
 
@@ -461,55 +484,51 @@ export default function PatientDiagnosisDetail() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="border rounded-lg overflow-hidden">
-                    <div className="relative aspect-square">
-                      <div className="absolute inset-0 flex items-center justify-center bg-muted">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-12 w-12 text-muted-foreground">
-                          <rect width="18" height="18" x="3" y="3" rx="2" ry="2"></rect>
-                          <circle cx="8.5" cy="8.5" r="1.5"></circle>
-                          <path d="m21 15-5-5L5 21"></path>
-                        </svg>
-                      </div>
+                    <div className="relative">
+                      {diagnosisData.imageSrc ? (
+                        <img
+                          src={diagnosisData.imageSrc}
+                          alt="Medical report image for AI analysis"
+                          className="w-full h-auto object-contain max-h-[400px] bg-black"
+                        />
+                      ) : (
+                        <div className="aspect-square flex items-center justify-center bg-muted">
+                          <div className="text-center text-muted-foreground">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-12 w-12 mx-auto mb-2">
+                              <rect width="18" height="18" x="3" y="3" rx="2" ry="2"></rect>
+                              <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                              <path d="m21 15-5-5L5 21"></path>
+                            </svg>
+                            <p className="text-sm">No image available</p>
+                          </div>
+                        </div>
+                      )}
                     </div>
                     <div className="p-3 bg-muted/50">
-                      <p className="text-sm font-medium">Chest X-ray with AI heatmap overlay</p>
+                      <p className="text-sm font-medium">AI Analysis Overlay</p>
                       <p className="text-xs text-muted-foreground">
-                        Red areas indicate regions of interest for the diagnosis
+                        Highlighted areas indicate regions of interest for the diagnosis
                       </p>
                     </div>
                   </div>
 
-                  <div>
-                    <h3 className="font-medium">Key Findings</h3>
-                    <ul className="mt-2 space-y-2 text-sm">
-                      <li className="flex items-start gap-2">
-                        <div className="h-5 w-5 bg-red-100 dark:bg-red-800/20 rounded-full flex items-center justify-center text-xs font-medium text-red-800 dark:text-red-400 mt-0.5">
-                          1
-                        </div>
-                        <div>
-                          <div className="font-medium">Lower Right Lobe Opacity</div>
-                          <p className="text-muted-foreground">Consolidated area indicating probable infection</p>
-                        </div>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <div className="h-5 w-5 bg-amber-100 dark:bg-amber-800/20 rounded-full flex items-center justify-center text-xs font-medium text-amber-800 dark:text-amber-400 mt-0.5">
-                          2
-                        </div>
-                        <div>
-                          <div className="font-medium">Minor Bronchial Thickening</div>
-                          <p className="text-muted-foreground">Indicative of inflammatory response</p>
-                        </div>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <div className="h-5 w-5 bg-green-100 dark:bg-green-800/20 rounded-full flex items-center justify-center text-xs font-medium text-green-800 dark:text-green-400 mt-0.5">
-                          3
-                        </div>
-                        <div>
-                          <div className="font-medium">Normal Heart Size</div>
-                          <p className="text-muted-foreground">No cardiomegaly detected</p>
-                        </div>
-                      </li>
-                    </ul>
-                  </div>
+                  {diagnosisData.aiResponse?.sections && diagnosisData.aiResponse.sections.length > 0 && (
+                    <div>
+                      <h3 className="font-medium">Key Findings</h3>
+                      <ul className="mt-2 space-y-2 text-sm">
+                        {diagnosisData.aiResponse.sections.map((section, idx) => (
+                          <li key={idx} className="flex items-start gap-2">
+                            <div className="h-5 w-5 bg-blue-100 dark:bg-blue-800/20 rounded-full flex items-center justify-center text-xs font-medium text-blue-800 dark:text-blue-400 mt-0.5 shrink-0">
+                              {idx + 1}
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground mt-0.5">{section}</p>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
@@ -634,30 +653,25 @@ export default function PatientDiagnosisDetail() {
                     <ul className="space-y-2">
                       {diagnosisData.treatmentRecommendations.map((item, i) => (
                         <li key={i} className="flex items-start gap-2 text-sm">
-                          <div className="h-5 w-5 bg-green-100 dark:bg-green-800/20 rounded-full flex items-center justify-center text-xs font-medium text-green-800 dark:text-green-400 mt-0.5">
+                          <div className="h-5 w-5 bg-green-100 dark:bg-green-800/20 rounded-full flex items-center justify-center text-xs font-medium text-green-800 dark:text-green-400 mt-0.5 shrink-0">
                             ✓
                           </div>
-                          {item}
+                          <InlineMd text={item} />
                         </li>
                       ))}
                     </ul>
                   </div>
 
                   <div>
-                    <h3 className="font-medium mb-3">Doctor&apos;s Notes</h3>
+                    <h3 className="font-medium mb-3">Doctor's Additional Notes</h3>
                     <div className="text-sm space-y-4">
                       <p>
-                        Patient presents with classic symptoms of community-acquired pneumonia. 
-                        The X-ray confirms the diagnosis, showing a clear infiltrate in the right lower lobe.
+                        {diagnosisData.status === "approved" 
+                          ? "Diagnosis confirmed and reviewed." 
+                          : "Pending full medical review."}
                       </p>
                       <p>
-                        I&apos;m confident in the AI assessment and have prescribed a standard course of 
-                        amoxicillin. Given the patient&apos;s age and absence of complicating factors,
-                        I expect a full recovery within 2-3 weeks.
-                      </p>
-                      <p>
-                        Follow-up is essential to ensure the infection is clearing properly.
-                        If symptoms worsen before the follow-up appointment, please seek immediate care.
+                        Follow-up is essential to ensure proper care. If symptoms worsen, please seek immediate medical attention.
                       </p>
                     </div>
                   </div>
@@ -696,30 +710,47 @@ export default function PatientDiagnosisDetail() {
             <div className="grid gap-6 md:grid-cols-2">
               <Card>
                 <CardHeader>
-                  <CardTitle>Original X-ray Image</CardTitle>
+                  <CardTitle>Uploaded Medical Report</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="border rounded-lg overflow-hidden">
-                    <div className="relative aspect-square">
-                      <div className="absolute inset-0 flex items-center justify-center bg-muted">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-12 w-12 text-muted-foreground">
-                          <rect width="18" height="18" x="3" y="3" rx="2" ry="2"></rect>
-                          <circle cx="8.5" cy="8.5" r="1.5"></circle>
-                          <path d="m21 15-5-5L5 21"></path>
-                        </svg>
-                      </div>
+                    <div className="relative">
+                      {diagnosisData.imageSrc ? (
+                        <img
+                          src={diagnosisData.imageSrc}
+                          alt={`${diagnosisData.type} original`}
+                          className="w-full h-auto object-contain max-h-[600px] bg-black"
+                        />
+                      ) : (
+                        <div className="aspect-square flex items-center justify-center bg-muted">
+                          <div className="text-center text-muted-foreground">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-12 w-12 mx-auto mb-2">
+                              <rect width="18" height="18" x="3" y="3" rx="2" ry="2"></rect>
+                              <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                              <path d="m21 15-5-5L5 21"></path>
+                            </svg>
+                            <p className="text-sm">No image available</p>
+                          </div>
+                        </div>
+                      )}
                     </div>
                     <div className="p-3 bg-muted/50 flex justify-between items-center">
                       <div>
-                        <p className="text-sm font-medium">Chest X-ray (Original)</p>
+                        <p className="text-sm font-medium">{diagnosisData.type} (Original)</p>
                         <p className="text-xs text-muted-foreground">
-                          Taken on May 10, 2023
+                          Uploaded on {diagnosisData.diagnosisDate}
                         </p>
                       </div>
-                      <Button variant="outline" size="sm">
-                        <Download size={14} className="mr-2" />
-                        Download
-                      </Button>
+                      {diagnosisData.imageSrc && (
+                        <a
+                          href={diagnosisData.imageSrc}
+                          download={`report-${diagnosisData.id}.jpg`}
+                          className="inline-flex items-center gap-1 text-xs border rounded px-2 py-1 hover:bg-muted transition-colors"
+                        >
+                          <Download size={12} />
+                          Download
+                        </a>
+                      )}
                     </div>
                   </div>
                 </CardContent>
@@ -730,15 +761,26 @@ export default function PatientDiagnosisDetail() {
                   <CardTitle>AI Analysis Overlay</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="border rounded-lg overflow-hidden">
-                    <div className="relative aspect-square">
-                      <div className="absolute inset-0 flex items-center justify-center bg-muted">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-12 w-12 text-muted-foreground">
-                          <rect width="18" height="18" x="3" y="3" rx="2" ry="2"></rect>
-                          <circle cx="8.5" cy="8.5" r="1.5"></circle>
-                          <path d="m21 15-5-5L5 21"></path>
-                        </svg>
-                      </div>
+                  <div className="border rounded-md overflow-hidden">
+                    <div className="relative">
+                      {diagnosisData.imageSrc ? (
+                        <img
+                          src={diagnosisData.imageSrc}
+                          alt="Uploaded medical report"
+                          className="w-full h-auto object-contain max-h-[500px] bg-black"
+                        />
+                      ) : (
+                        <div className="aspect-video flex items-center justify-center bg-muted">
+                          <div className="text-center text-muted-foreground">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-12 w-12 mx-auto mb-2">
+                              <rect width="18" height="18" x="3" y="3" rx="2" ry="2"></rect>
+                              <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                              <path d="m21 15-5-5L5 21"></path>
+                            </svg>
+                            <p className="text-sm">No image available</p>
+                          </div>
+                        </div>
+                      )}
                     </div>
                     <div className="p-3 bg-muted/50 flex justify-between items-center">
                       <div>
@@ -762,33 +804,35 @@ export default function PatientDiagnosisDetail() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    <p>
-                      The chest X-ray shows a focal area of consolidation in the right lower lobe, 
-                      which is consistent with pneumonia. The heart size appears normal, and there 
-                      are no signs of pleural effusion or pneumothorax.
-                    </p>
-                    <div className="grid gap-4 md:grid-cols-3">
+                    <div className="prose prose-sm dark:prose-invert max-w-none
+                      [&>h2]:text-base [&>h2]:font-semibold [&>h2]:mt-4 [&>h2]:mb-2 [&>h2]:text-primary
+                      [&>h3]:text-sm [&>h3]:font-semibold [&>h3]:mt-3 [&>h3]:mb-1
+                      [&>ul]:list-disc [&>ul]:pl-5 [&>ul]:space-y-1
+                      [&>ol]:list-decimal [&>ol]:pl-5 [&>ol]:space-y-1
+                      [&>p]:mb-2 [&>p]:leading-relaxed
+                      [&_strong]:font-semibold [&_strong]:text-foreground
+                      [&_li]:text-muted-foreground">
+                      <ReactMarkdown>
+                        {diagnosisData.aiResponse?.fullText || `The AI has processed the ${diagnosisData.type.toLowerCase()} and provided the diagnostic findings. Results indicate ${diagnosisData.aiDiagnosis.toLowerCase()}.`}
+                      </ReactMarkdown>
+                    </div>
+                    <div className="grid gap-4 md:grid-cols-2">
                       <div className="border rounded-md p-3">
-                        <h4 className="font-medium text-sm mb-1">Areas of Concern</h4>
+                        <h4 className="font-medium text-sm mb-1">Risk Factors</h4>
                         <ul className="text-sm text-muted-foreground list-disc list-inside">
-                          <li>Right lower lobe infiltrate</li>
-                          <li>Minor bronchial wall thickening</li>
+                          {diagnosisData.riskFactors.length > 0 ? (
+                            diagnosisData.riskFactors.slice(0, 3).map((risk, i) => <li key={i}>{risk}</li>)
+                          ) : (
+                            <li>No specific risk factors noted</li>
+                          )}
                         </ul>
                       </div>
                       <div className="border rounded-md p-3">
-                        <h4 className="font-medium text-sm mb-1">Normal Findings</h4>
+                        <h4 className="font-medium text-sm mb-1">Recommended Follow-up</h4>
                         <ul className="text-sm text-muted-foreground list-disc list-inside">
-                          <li>Normal heart size</li>
-                          <li>No pleural effusion</li>
-                          <li>No pneumothorax</li>
-                        </ul>
-                      </div>
-                      <div className="border rounded-md p-3">
-                        <h4 className="font-medium text-sm mb-1">Technical Details</h4>
-                        <ul className="text-sm text-muted-foreground list-disc list-inside">
-                          <li>PA view</li>
-                          <li>Good inspiration</li>
-                          <li>Adequate penetration</li>
+                          {diagnosisData.treatmentRecommendations.slice(0, 3).map((rec, i) => (
+                            <li key={i}><InlineMd text={rec} /></li>
+                          ))}
                         </ul>
                       </div>
                     </div>

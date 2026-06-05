@@ -18,10 +18,18 @@ export type MedicalImageData = {
   bodyPart: string;
 };
 
+export type MedicalReportData = {
+  reportText?: string;          // Full OCR-extracted text from the report (optional when image provided)
+  imageData?: string;           // Base64 encoded image of the report (for Vision API)
+  imageMimeType?: string;       // e.g., "image/jpeg", "image/png"
+  labValues?: Record<string, string>; // Structured key-value pairs of lab results
+  reportType?: string;         // e.g., "Blood Panel", "Dengue Panel", "CBC"
+};
+
 export async function analyzeSymptomsWithGemini(symptomData: SymptomData) {
   try {
     // For text-only generation, use the gemini-1.5-flash model
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
     // Create a structured prompt for symptom analysis
     const prompt = `
@@ -55,7 +63,7 @@ export async function analyzeSymptomsWithGemini(symptomData: SymptomData) {
 export async function analyzeMedicalImageWithGemini(imageData: MedicalImageData) {
   try {
     // For multimodal generation (text + images), use the gemini-1.5-flash model
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
     // Decode the base64 image and create a part for the model
     const imagePart = {
@@ -93,7 +101,7 @@ export async function analyzeMedicalImageWithGemini(imageData: MedicalImageData)
 
 export async function getFollowUpRecommendations(diagnosis: string, patientQuestion?: string) {
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
     
     const prompt = `
       You are a medical AI assistant helping with follow-up recommendations for a diagnosis.
@@ -120,6 +128,75 @@ export async function getFollowUpRecommendations(diagnosis: string, patientQuest
   }
 }
 
+export async function analyzeMedicalReportWithGemini(reportData: MedicalReportData) {
+  try {
+    // Use the full flash model for better clinical reasoning on lab reports
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+    // Build a structured lab values section if available
+    const labValuesSection = reportData.labValues && Object.keys(reportData.labValues).length > 0
+      ? `\nExtracted Lab Values (structured):\n${Object.entries(reportData.labValues)
+          .map(([k, v]) => `  - ${k}: ${v}`)
+          .join("\n")}`
+      : "";
+
+    const clinicalPrompt = `You are a senior clinical laboratory specialist AI. You are analyzing a medical lab report. Your task is to produce a thorough, structured clinical interpretation.
+
+Report Type: ${reportData.reportType || "Medical Lab Report"}
+${labValuesSection}
+
+Please carefully read ALL values from the report (including those in columns/tables) and provide a comprehensive analysis structured as follows:
+
+## Primary Diagnosis
+State the most likely diagnosis based on the lab findings. Be specific (e.g., "Dengue Fever — Positive IgG and IgM antibodies indicating Secondary Dengue Infection"). If all values are normal, state "No Significant Pathology Detected — All Parameters Within Normal Range".
+
+## Key Lab Findings
+For EACH test result in the report, provide:
+- **Test Name:** Value (Unit) — Normal / Abnormal (High/Low) — Reference: [range]
+- Clinical significance in 1 sentence
+
+## Clinical Interpretation
+A clear paragraph explaining what all results together indicate. Mention any patterns (e.g., lymphopenia, elevated MCHC) and their clinical relevance.
+
+## Risk Assessment
+List any abnormal findings that need attention, from most to least urgent.
+
+## Recommended Next Steps
+List 4-6 specific, actionable clinical recommendations.
+
+## Important Disclaimer
+This is an AI-assisted preliminary analysis and must be confirmed by a qualified physician.
+
+Be thorough, evidence-based, and use plain language.`;
+
+    // VISION PATH: When an image is provided, send directly to Gemini Vision (more accurate than OCR)
+    if (reportData.imageData) {
+      const imagePart = {
+        inlineData: {
+          data: reportData.imageData.replace(/^data:image\/(png|jpeg|jpg);base64,/, ""),
+          mimeType: (reportData.imageMimeType || "image/jpeg") as "image/jpeg" | "image/png",
+        },
+      };
+      const result = await model.generateContent([clinicalPrompt, imagePart]);
+      return result.response.text();
+    }
+
+    // TEXT PATH: When OCR text is provided (e.g., from a PDF)
+    const textPrompt = `${clinicalPrompt}
+
+Full Report Text (OCR extracted):
+---
+${(reportData.reportText || "").substring(0, 4000)}
+---`;
+
+    const result = await model.generateContent(textPrompt);
+    return result.response.text();
+  } catch (error) {
+    console.error("Error analyzing medical report with Gemini:", error);
+    throw error;
+  }
+}
+
 // Function to safely parse Gemini API responses into structured format
 export function parseGeminiResponse(responseText: string) {
   try {
@@ -142,20 +219,36 @@ export function parseGeminiResponse(responseText: string) {
 
 // Helper functions to extract specific data from the response
 function extractDiagnosis(text: string): string {
-  // Look for primary diagnosis information
-  const diagnosisMatch = text.match(/(?:primary diagnosis|most likely diagnosis|diagnosis|suspected diagnosis)[:\-]?\s*([^\n\.]+)/i);
-  if (diagnosisMatch?.[1]) {
+  // First look for bullet points or direct statements about diagnosis
+  const diagnosisMatch = text.match(/(?:primary diagnosis|most likely diagnosis|potential diagnosis|suspected diagnosis|diagnosis)[:\-]?\s*\*?\*?\s*([^\n\.\*]+)/i);
+  if (diagnosisMatch?.[1] && diagnosisMatch[1].trim().length > 0) {
     return diagnosisMatch[1].trim();
   }
   const fallbackMatch = text.match(/(?:diagnosis|diagnose) is ([^\n\.]+)/i);
-  if (fallbackMatch?.[1]) {
+  if (fallbackMatch?.[1] && fallbackMatch[1].trim().length > 0) {
     return fallbackMatch[1].trim();
   }
+  
+  // If we can't find a direct match, look for the first non-heading line under a Diagnosis section
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  
+  // Find index of diagnosis section
+  const diagSectionIdx = lines.findIndex(l => /diagnosis/i.test(l));
+  if (diagSectionIdx !== -1 && diagSectionIdx + 1 < lines.length) {
+      const possibleDiagLine = lines.slice(diagSectionIdx + 1).find(l => !l.match(/^#/));
+      if (possibleDiagLine) {
+          // clean up bullet points
+          const cleanedLine = possibleDiagLine.replace(/^[-*\d.]+\s*/, '').replace(/\*+/g, '');
+          if (cleanedLine.length > 0 && cleanedLine.length < 150) {
+              return cleanedLine;
+          }
+      }
+  }
+
   if (lines.length > 0) {
-    const firstLine = lines.find(l => !l.startsWith('#'));
-    if (firstLine && firstLine.length < 100) {
-      return firstLine;
+    const firstLine = lines.find(l => !l.startsWith('#') && l.length > 5 && l.length < 100);
+    if (firstLine) {
+      return firstLine.replace(/^[-*\d.]+\s*/, '').replace(/\*+/g, '');
     }
   }
   return "Refer to Detailed Assessment";

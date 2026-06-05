@@ -4,7 +4,11 @@ import os
 import json
 from PIL import Image
 import io
-import pypdf
+import io
+from services.ocr_service import process_document
+from services.rag_service import rag_service
+from utils.normalization import extract_lab_values_rule_based
+from utils.safety import run_safety_checks
 try:
     from transformers import pipeline
     transformers_available = True
@@ -36,7 +40,14 @@ CANDIDATE_MAP = {
     "heart or chest pain issue": "Cardiac Condition",
     "stomach or stomach ache": "Gastrointestinal Issue",
     "neurological problem": "Neurological Disorder",
-    "healthy or normal": "Normal / Healthy"
+    "healthy or normal": "Normal / Healthy",
+    "dengue fever or viral hemorrhagic fever": "Dengue Fever",
+    "malaria or plasmodium infection": "Malaria",
+    "typhoid fever or salmonella infection": "Typhoid Fever",
+    "urinary tract infection or kidney issue": "Urinary Tract Infection",
+    "anemia or low blood count": "Anemia",
+    "diabetes or high blood sugar": "Diabetes",
+    "thyroid disorder": "Thyroid Disorder"
 }
 
 def load_models():
@@ -75,22 +86,22 @@ def fallback_ner(text):
         "procedures": []
     }
     
-    symptoms_list = ["cough", "fever", "chest pain", "shortness of breath", "headache", "nausea", "fatigue", "dizziness", "sore throat"]
+    symptoms_list = ["cough", "fever", "chest pain", "shortness of breath", "headache", "nausea", "fatigue", "dizziness", "sore throat", "rash", "joint pain", "muscle ache", "chills", "vomiting", "bleeding"]
     for s in symptoms_list:
         if s in text_lower:
             entities["symptoms"].append(s)
             
-    meds_list = ["aspirin", "ibuprofen", "amoxicillin", "albuterol", "paracetamol", "acetaminophen", "metformin", "lisinopril"]
+    meds_list = ["aspirin", "ibuprofen", "amoxicillin", "albuterol", "paracetamol", "acetaminophen", "metformin", "lisinopril", "chloroquine", "hydroxychloroquine", "doxycycline", "ciprofloxacin"]
     for m in meds_list:
         if m in text_lower:
             entities["medications"].append(m)
             
-    diseases_list = ["pneumonia", "covid-19", "tuberculosis", "lung cancer", "migraine", "bronchitis", "asthma", "diabetes"]
+    diseases_list = ["pneumonia", "covid-19", "tuberculosis", "lung cancer", "migraine", "bronchitis", "asthma", "diabetes", "dengue fever", "dengue", "malaria", "typhoid", "chikungunya", "hepatitis", "leptospirosis", "influenza"]
     for d in diseases_list:
         if d in text_lower:
             entities["diseases"].append(d)
             
-    proc_list = ["x-ray", "mri", "ct scan", "blood test", "biopsy", "ultrasound"]
+    proc_list = ["x-ray", "mri", "ct scan", "blood test", "biopsy", "ultrasound", "elisa", "pcr", "ns1 antigen", "dengue panel", "complete blood count", "cbc"]
     for p in proc_list:
         if p in text_lower:
             entities["procedures"].append(p)
@@ -100,6 +111,17 @@ def fallback_ner(text):
 # Rule-based fallback for classification
 def fallback_classification(text):
     text_lower = text.lower()
+    # Dengue detection — check antibody positivity
+    if "dengue" in text_lower:
+        if "positive" in text_lower and ("igg" in text_lower or "igm" in text_lower):
+            if "igg" in text_lower and "igm" in text_lower and "positive" in text_lower:
+                return "Dengue Fever (Secondary/Recent Infection)", 88.0
+            return "Dengue Fever", 82.0
+        return "Dengue Fever (Suspected)", 70.0
+    if "malaria" in text_lower or "plasmodium" in text_lower:
+        return "Malaria", 80.0
+    if "typhoid" in text_lower or "widal" in text_lower or "salmonella" in text_lower:
+        return "Typhoid Fever", 78.0
     if "cough" in text_lower or "pneumonia" in text_lower or "covid" in text_lower:
         return "Respiratory Infection", 75.0
     if "headache" in text_lower or "migraine" in text_lower:
@@ -108,6 +130,12 @@ def fallback_classification(text):
         return "Cardiac Condition", 80.0
     if "abdominal" in text_lower or "stomach" in text_lower or "nausea" in text_lower:
         return "Gastrointestinal Issue", 65.0
+    if "anemia" in text_lower or "hemoglobin" in text_lower:
+        return "Anemia", 72.0
+    if "diabetes" in text_lower or "glucose" in text_lower or "hba1c" in text_lower:
+        return "Diabetes", 76.0
+    if "thyroid" in text_lower or "tsh" in text_lower:
+        return "Thyroid Disorder", 74.0
     return "Inconclusive Analysis", 50.0
 
 def expand_to_word_boundaries(text, start, end):
@@ -208,7 +236,25 @@ def classify_clinical_text(text):
 
 def generate_recommendations(diagnosis, entities):
     recs = []
-    if diagnosis == "Respiratory Infection":
+    diagnosis_lower = diagnosis.lower()
+    if "dengue" in diagnosis_lower:
+        recs.append("Maintain strict bed rest and avoid aspirin or NSAIDs (use paracetamol only for fever).")
+        recs.append("Stay well hydrated — drink at least 2-3 litres of fluids (oral rehydration salts recommended).")
+        recs.append("Monitor platelet count and haematocrit daily — immediate hospitalisation if platelets drop below 100,000/μL.")
+        recs.append("Watch for warning signs: severe abdominal pain, persistent vomiting, bleeding gums/nose, blood in urine/stool, sudden drop in temperature. Seek emergency care immediately.")
+        recs.append("Consult an infectious disease specialist or haematologist for follow-up.")
+        recs.append("Use mosquito repellent and nets to prevent further mosquito bites during illness.")
+    elif "malaria" in diagnosis_lower:
+        recs.append("Start anti-malarial treatment as prescribed by a physician (e.g., artemisinin-based therapy).")
+        recs.append("Monitor for severe malaria symptoms: altered consciousness, severe anaemia, respiratory distress.")
+        recs.append("Complete the full course of treatment even if feeling better.")
+        recs.append("Follow-up blood smear test after treatment to confirm parasite clearance.")
+    elif "typhoid" in diagnosis_lower:
+        recs.append("Take the full prescribed course of antibiotics (e.g., azithromycin, ciprofloxacin) — do not stop early.")
+        recs.append("Eat soft, easily digestible foods. Avoid raw foods and contaminated water.")
+        recs.append("Isolate to prevent spread — typhoid is highly contagious through fecal-oral route.")
+        recs.append("Return for follow-up blood cultures after treatment to confirm clearance.")
+    elif diagnosis == "Respiratory Infection":
         recs.append("Rest and maintain adequate hydration.")
         recs.append("Monitor body temperature and oxygen levels regularly.")
         recs.append("Consult a doctor if shortness of breath develops.")
@@ -335,18 +381,24 @@ def analyze_symptoms():
 @app.route("/api/analyze-report", methods=["POST"])
 def analyze_report():
     text = ""
+    import tempfile
     
     # Check if a file was uploaded
     if "file" in request.files:
         file = request.files["file"]
         filename = file.filename.lower()
-        if filename.endswith(".pdf"):
-            text = extract_text_from_pdf(file.read())
-        elif filename.endswith(".txt"):
-            text = file.read().decode("utf-8", errors="ignore")
-        else:
-            return jsonify({"error": "Unsupported file format. Please upload a PDF or TXT file."}), 400
-    
+        ext = os.path.splitext(filename)[1]
+        
+        # Save temp file for OCR
+        fd, temp_path = tempfile.mkstemp(suffix=ext)
+        with os.fdopen(fd, 'wb') as f:
+            f.write(file.read())
+            
+        try:
+            text = process_document(temp_path, ext)
+        finally:
+            os.remove(temp_path)
+            
     # Check if text was provided in the JSON body
     elif request.is_json:
         data = request.json
@@ -355,16 +407,46 @@ def analyze_report():
     if not text.strip():
         return jsonify({"error": "No medical text or file content could be extracted."}), 400
         
-    # Analyze the clinical text
+    # Phase 2: Hybrid Extraction
+    lab_data = extract_lab_values_rule_based(text)
     entities = extract_clinical_entities(text)
-    diagnosis, confidence = classify_clinical_text(text)
-    recommendations = generate_recommendations(diagnosis, entities)
     
+    # Phase 3: RAG Retrieval
+    queries = []
+    if lab_data:
+        queries.extend([f"{k} normal range" for k in lab_data.keys()])
+    if entities.get("diseases"):
+        queries.extend(entities["diseases"][:2])
+    
+    guidelines = rag_service.retrieve_guidelines(queries)
+    
+    # Phase 4: Single-Pass Clinical Reasoning
+    # For the Flask backend, we will pass the diagnosis back to Next.js which uses Gemini.
+    # We will simulate the hybrid confidence score locally.
+    diagnosis, llm_confidence = classify_clinical_text(text)
+    
+    # Hybrid confidence: Boost confidence if we have lab data or RAG guidelines that match
+    rule_confidence_boost = 0
+    if lab_data: rule_confidence_boost += 10
+    if guidelines and "No RAG evidence" not in guidelines: rule_confidence_boost += 5
+    
+    final_confidence = min(99.0, llm_confidence + rule_confidence_boost)
+    
+    # Phase 5: Safety Layer
+    safety_warning = run_safety_checks(lab_data)
+    
+    recommendations = generate_recommendations(diagnosis, entities)
+    if safety_warning:
+        recommendations.insert(0, safety_warning["recommendation"])
+        
     response = {
-        "text": text[:5000], # Return truncated source text for display
-        "diagnosis": diagnosis,
-        "confidence": confidence,
+        "text": text[:5000],
+        "diagnosis": safety_warning["severity"] + " Alert" if safety_warning else diagnosis,
+        "confidence": final_confidence,
         "entities": entities,
+        "lab_data": lab_data,
+        "guidelines_retrieved": guidelines != "No RAG evidence retrieved (ChromaDB disabled or empty query).",
+        "safety_warning": safety_warning["warning"] if safety_warning else None,
         "recommendations": recommendations
     }
     

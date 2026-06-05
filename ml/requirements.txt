@@ -2,6 +2,11 @@ numpy>=1.26.0
 pillow>=10.0.0
 flask>=3.0.0
 pypdf>=4.0.0
+easyocr>=1.7.0
+pdfplumber>=0.11.0
+chromadb>=0.4.22
+pydantic>=2.5.0
+flask-cors>=4.0.0
 
 # Optional: High-precision ClinicalBERT NLP models (uncomment if you have at least 8GB of RAM)
 # torch>=2.1.0
